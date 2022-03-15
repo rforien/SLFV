@@ -32,13 +32,13 @@ class SLFV(object):
     def set_freq(self, freq_func, *args, **kwargs):
         self.frequency.set_freq(freq_func, *args, **kwargs)
         
-    def plot(self, ax = None):
+    def plot(self, ax = None, show = True):
         if ax is None:
             self.fig = plt.figure()
             self.ax = plt.axes()
         else:
             self.ax = ax
-        self.lines = self.frequency.plot(self.ax)
+        self.lines = self.frequency.plot(self.ax, show = show)
         if ax is None:
             plt.tight_layout()
     
@@ -65,15 +65,18 @@ class SLFV(object):
     
     def run_animate(self, T, dt = 0.1, save = False, name = '', fill = True):
         assert dt > 0
-        self.plot()
-        self.anim = animation.FuncAnimation(self.fig, self._update, interval = 20, blit=False, fargs=(dt, fill))
+        self.plot(show = False)
+        anim = animation.FuncAnimation(self.fig, self._update, interval = 80, blit=False, fargs=(dt, fill))
         if (save and name != ''):
-            self.anim.save(name, writer ='ffmpeg')
+            anim.save(name, writer ='ffmpeg')
+        else:
+            plt.show()
     
     def _update(self, i, dt, fill = True):
         self.run(dt)
         time.sleep(0.03)
-        return self.frequency.update_plot(self.ax, self.lines, fill)
+        result = self.frequency.update_plot(self.ax, self.lines, fill)
+        return result
         
 if __name__ == '__main__':
     # u = .2
@@ -83,11 +86,11 @@ if __name__ == '__main__':
     # event = events.StableRadius(u, u, alpha, 2)
     
     u0 = .3
-    r0 = .5
+    r0 = 1
     c = 0
     b = 5
     a = 1.5
-    mu = 0.1
+    mu = 0
     event = events.OneTailRadiiWithMutation(u0, r0, c, b, a, 2, mu)
     
     slfv = SLFV((10, 10), 2, event, dx = 0.05)
@@ -100,4 +103,4 @@ if __name__ == '__main__':
     Y0 = 1
     R = 4
     slfv.set_freq(freq_func, X0=X0, Y0=Y0, R=R)
-    slfv.run_animate(1, dt = 0.05)
+    slfv.run_animate(3, dt = 0.02)

@@ -129,7 +129,7 @@ class Frequency2D(Frequency1D):
                 for j in range(self.nx[1]):
                     self.freq[i,j] = freq_func(self.X[i,j], self.Y[i,j], *args, **kwargs)
     
-    def plot(self, ax = None, colorbar = True):
+    def plot(self, ax = None, colorbar = True, show = True):
         if ax is None:
             plt.figure()
             ax = plt.axes()
@@ -151,8 +151,9 @@ class Frequency2D(Frequency1D):
                 cb.set_label("Proportion of allele 0")
             else:
                 cb.set_label("Majority allele")
-        plt.show()
+        if show:
+            plt.show()
         return ax
     
     def update_plot(self, ax, lines, fill = None):
-        return self.plot(ax, colorbar=False)
+        return self.plot(ax, colorbar=False, show = False)
