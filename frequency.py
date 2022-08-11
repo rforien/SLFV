@@ -9,8 +9,10 @@ Created on Fri Mar 11 19:30:50 2022
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
+import json
 
 class Frequency1D(object):
+    colorbar=cm.Reds
     def __init__(self, shape, dx, nb_alleles, freq = None):
         assert np.min(shape) > 0
         assert type(nb_alleles) == int and nb_alleles >= 2
@@ -84,6 +86,18 @@ class Frequency1D(object):
                 ax.fill_between(self.space, summed_freq[:,i-1], summed_freq[:,i], color=self.colors[i])
             return ax
     
+    def save(self, filename):
+        dico = {
+            "shape": self.shape,
+            "dx": self.dx,
+            "nb_alleles": self.N}
+        json_object = json.dumps(dico)
+        
+        with open(filename + '.json', "w") as out:
+            out.write(json_object)
+        
+        np.save(filename + '.npy', self.freq)
+    
     def __add__(self, other):
         if isinstance(other, Frequency1D):
             new_freq = self.freq + other.freq
@@ -97,6 +111,19 @@ class Frequency1D(object):
     
     def __rmul__(self, cst):
         return self.__mul__(cst)
+
+
+def load_freq_from_file(json_file, nparray_file, d = 1):
+    with open(json_file, 'r') as read:
+        json_object = json.load(read)
+    
+    freq = np.load(nparray_file)
+    
+    if d == 1:
+        return Frequency1D(json_object['shape'], json_object['dx'], json_object['nb_alleles'], freq)
+    else:
+        return Frequency2D(json_object['shape'], json_object['dx'], json_object['nb_alleles'], freq)
+    
 
 class Frequency2D(Frequency1D):
     def _build_space_freq(self, freq):
@@ -139,16 +166,19 @@ class Frequency2D(Frequency1D):
         if self.N == 2:
             Z = self.freq[:,:,0]
             vmax = 1
-            levels = np.linspace(0, 1, 101, endpoint = True)
+            levels = np.linspace(0, 1, 201, endpoint = True)
         else:
             Z = np.argmax(self.freq, axis = 2)+.1
             vmax = self.N
             levels = np.arange(self.N+1)
-        lines = ax.contourf(self.X, self.Y, Z, vmin=0, vmax=vmax, levels = levels, cmap = cm.jet)
+        self.lines = ax.contourf(self.X, self.Y, Z, vmin=0, vmax=vmax, levels = levels, cmap = self.colorbar)
         if colorbar:
-            cb = plt.colorbar(lines)
+            cb = plt.colorbar(self.lines)
             if self.N == 2:
                 cb.set_label("Proportion of allele 0")
+                ticks = np.linspace(0, 1, 11).round(1)
+                cb.set_ticks(ticks)
+                cb.set_ticklabels(ticks)
             else:
                 cb.set_label("Majority allele")
         if show:

@@ -10,8 +10,8 @@ import numpy as np
 import numpy.random as rand
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import frequency
-import event_drawer as events
+from . import frequency
+from . import event_drawer as events
 import time
 
 class SLFV(object):
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     u0 = .3
     r0 = 1
     c = 0
-    b = 5
+    b = 0.3
     a = 1.5
     mu = 0
     event = events.OneTailRadiiWithMutation(u0, r0, c, b, a, 2, mu)
@@ -103,4 +103,5 @@ if __name__ == '__main__':
     Y0 = 1
     R = 4
     slfv.set_freq(freq_func, X0=X0, Y0=Y0, R=R)
-    slfv.run_animate(3, dt = 0.02)
+    slfv.plot()
+    # slfv.run_animate(5, dt = 0.02, save = False, name = "SLFV_two_radii_small_b.mp4")

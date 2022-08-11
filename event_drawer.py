@@ -31,12 +31,13 @@ class FixedEvent(EventDist):
     def _pick_k(self, freq):
         return np.random.choice(np.arange(np.size(freq)), p = freq)
     
-    def run_event(self, frequency, impact = None, radius = None):
+    def run_event(self, frequency, impact = None, radius = None, centre = None):
         if impact is None:
             impact = self.u
         if radius is None:
             radius = self.r
-        centre = np.random.rand(np.size(frequency.shape))*frequency.shape
+        if centre is None:
+            centre = np.random.rand(np.size(frequency.shape))*frequency.shape
         freq = frequency.freq_in_ball(centre, radius)
         k = self._pick_k(freq)
         frequency.update(centre, radius, impact, k)
