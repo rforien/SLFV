@@ -77,8 +77,8 @@ class OneTailRadii(FixedEvent):
     
     def run_event(self, frequency):
         r2 = self.r * np.random.rand()**(-1/self.tail)
-        r1 = r2**self.b
-        u = self.u * r2**(-self.c)
+        r1 = self.r * (r2/self.r)**self.b
+        u = self.u * (r2/self.r)**(-self.c)
         centre = np.random.rand(np.size(frequency.shape))*frequency.shape
         freq = frequency.freq_in_ball(centre, r1)
         try:

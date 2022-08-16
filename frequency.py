@@ -38,8 +38,11 @@ class Frequency1D(object):
         mean = np.mean(self.freq[np.abs(self.space-centre) <= radius], axis = 0)
         return mean
     
+    def ball(self, centre, radius):
+        return np.abs(self.space-centre) <= radius
+    
     def update(self, centre, radius, impact, new_allele):
-        ball = np.abs(self.space-centre) <= radius
+        ball = self.ball(centre, radius)
         self.freq[ball] = (1-impact)*self.freq[ball] + impact*np.array(np.arange(self.N) == new_allele)
         
     def set_freq(self, freq_func, *args, **kwargs):
@@ -143,9 +146,8 @@ class Frequency2D(Frequency1D):
         ball = np.sqrt((self.X - centre[0])**2 + (self.Y-centre[1])**2) <= radius
         return np.mean(self.freq[ball], axis = 0)
     
-    def update(self, centre, radius, impact, new_allele):
-        ball = np.sqrt((self.X - centre[0])**2 + (self.Y-centre[1])**2) <= radius
-        self.freq[ball] = (1-impact) * self.freq[ball] + impact * np.array(np.arange(self.N) == new_allele)
+    def ball(self, centre, radius):
+        return np.sqrt((self.X - centre[0])**2 + (self.Y-centre[1])**2) <= radius
     
     def set_freq(self, freq_func, *args, **kwargs):
         try:
@@ -172,6 +174,8 @@ class Frequency2D(Frequency1D):
             vmax = self.N
             levels = np.arange(self.N+1)
         self.lines = ax.contourf(self.X, self.Y, Z, vmin=0, vmax=vmax, levels = levels, cmap = self.colorbar)
+        for c in self.lines.collections:
+            c.set_edgecolor("face")
         if colorbar:
             cb = plt.colorbar(self.lines)
             if self.N == 2:
