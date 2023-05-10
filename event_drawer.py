@@ -8,6 +8,7 @@ Created on Fri Mar 11 18:56:07 2022
 
 import numpy as np
 from abc import ABC, abstractmethod
+import scipy.special as sp
 
 class EventDist(ABC):
     def __init__(self):
@@ -19,6 +20,34 @@ class EventDist(ABC):
     @abstractmethod
     def run_event(self, frequency):
         return frequency
+
+class DualEventDist(ABC):
+    def __init__(self):
+        self.rate = 1
+    
+    @abstractmethod
+    def jump_rates(self, lineages_positions):
+        return np.size(lineages_positions, axis = 0)
+    
+    @abstractmethod
+    def draw_event_params(self, lineage_position):
+        '''
+        Returns the centre, parent position, impact and radius of an 
+        event, given that it involves a lineage at the specified 
+        position (before thinning).
+
+        Parameters
+        ----------
+        lineage_position : numpy array
+            position of the lineage involved in the event.
+
+        Returns
+        -------
+        parameters needed to run an event.
+
+        '''
+        pass
+
 
 class FixedEvent(EventDist):
     def __init__(self, impact_parameter, radius):
@@ -41,6 +70,70 @@ class FixedEvent(EventDist):
         freq = frequency.freq_in_ball(centre, radius)
         k = self._pick_k(freq)
         frequency.update(centre, radius, impact, k)
+
+def uniform_draw_from_ball(centre, radius):
+    dim = np.size(centre)
+    X = np.random.normal(0, 1, size = dim)
+    direction = X / np.sqrt(np.sum(X**2))
+    r = np.random.uniform()**(1/dim) * radius
+    return centre + r * direction
+
+def ball_volume(radius, dim):
+    return np.pi ** (dim / 2) * radius ** dim / sp.gamma(1 + dim / 2)
+
+class IgnoreEvent(Exception):
+    pass
+
+class DualFixedEvent(DualEventDist):
+    def __init__(self, impact, radius, dim):
+        super().__init__()
+        assert impact > 0 and impact <= 1
+        assert radius > 0
+        assert type(dim) == int and dim >= 1
+        self.d = dim
+        self.V = ball_volume(radius, dim)
+        self.u = impact
+        self.r = radius
+    
+    def jump_rates(self, lineages_positions):
+        return self.u * self.V * np.ones(np.size(lineages_positions, axis = 0))
+    
+    def draw_event_params(self, lineage_position):
+        centre = uniform_draw_from_ball(lineage_position, self.r)
+        parent_position = uniform_draw_from_ball(centre, self.r)
+        params = {'centre': centre,
+                  'radius': self.r,
+                  'impact': self.u,
+                  'parent position': parent_position}
+        return params
+
+class DualHeterogeneous(DualEventDist):
+    def __init__(self, impacts, radii, dim):
+        super().__init__()
+        assert np.min(impacts) > 0 and np.max(impacts) <= 1
+        assert np.min(radii) > 0
+        assert type(dim) == int and dim >= 1
+        self.d = dim
+        self.impacts = np.array(impacts)
+        self.radii = np.array(radii)
+        self.V = ball_volume(self.radii, dim)
+        self.rate = np.sum(self.impacts * self.radii)
+        self.signs = np.array([-1, 1])
+        
+    def jump_rates(self, lineages_positions):
+        return self.rate * np.ones(np.size(lineages_positions, axis = 0))
+    
+    def draw_event_params(self, lineage_position):
+        a = np.random.choice([0,1], p = self.impacts * self.radii / self.rate)
+        centre = uniform_draw_from_ball(lineage_position, self.radii[a])
+        if self.signs[a] * centre[0] < 0:
+            raise IgnoreEvent()
+        parent_position = uniform_draw_from_ball(centre, self.radii[a])
+        params = {'centre': centre,
+                  'radius': self.radii[a],
+                  'impact': self.impacts[a],
+                  'parent position': parent_position}
+        return params
 
 class FixedEventWithMutation(FixedEvent):
     def __init__(self, impact_parameter, radius, mutation_proba):

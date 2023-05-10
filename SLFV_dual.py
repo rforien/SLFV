@@ -10,12 +10,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
+import event_drawer
+
 class Labelled_Coalescent(object):
-    def __init__(self, n, labels):
-        assert type(n) == int, "Unexpected type of sample size."
-        assert n >= 1, "Sample size must be at least 1."
+    def __init__(self, labels):
         assert type(labels) == np.ndarray, "Unexpected type of labels."
-        assert np.size(labels, 0) == n, "Wrong number of labels provided."
+        n = np.size(labels, axis = 0)
         self.coalescent = np.reshape(np.arange(n), (1,n))
         self.labels = np.reshape(labels, (1,) + np.shape(labels))
     
@@ -44,8 +44,64 @@ class Labelled_Coalescent(object):
     
     def nb_current_lineages(self):
         return np.size(np.unique(self.coalescent[-1,]))
+    
+def dist(positions, centre):
+    return np.sqrt(np.sum((positions - centre[np.newaxis,:])**2, axis = 1))
 
 class SLFV_dual(object):
+    def __init__(self, event_dist, dim):
+        assert type(dim) == int and dim >= 1
+        self.d = dim
+        self.event_dist = event_dist
+    
+    def run_coalescent(self, lineages_init_positions, T):
+        assert np.size(lineages_init_positions, axis = 1) == self.d
+        self.n = np.size(lineages_init_positions, axis = 0)
+        self.coalescent = Labelled_Coalescent(lineages_init_positions)
+        t = 0
+        while True:
+            positions = self.coalescent.current_labels()
+            # draw the time of next event
+            rates = self.event_dist.jump_rates(positions)
+            dt = np.random.exponential(1/np.sum(rates))
+            # stop if we've reached T
+            if t + dt > T:
+                t = T
+                break
+            else:
+                t = t + dt
+            # draw the lineage involved in the event
+            i = np.random.choice(np.arange(len(rates)), p = rates / np.sum(rates))
+            try:
+                params = self.event_dist.draw_event_params(positions[i])
+            except event_drawer.IgnoreEvent:
+                continue
+            lineages_in_ball = dist(positions, params['centre']) <= params['radius']
+            assert lineages_in_ball[i], "Involved lineage not in the ball"
+            invovled_lineages = np.random.binomial(1, 
+                                    p = lineages_in_ball * params['impact'])
+            invovled_lineages[i] = 1
+            # thinning to avoid multiple counting
+            if np.sum(invovled_lineages) > 1:
+                if np.random.uniform() > 1/np.sum(invovled_lineages):
+                    continue
+            # add merger
+            indices_to_merge = np.arange(len(invovled_lineages))[invovled_lineages == True]
+            self.coalescent.single_merger(indices_to_merge, params['parent position'])
+            
+    def display_trajectory(self):
+        plt.figure()
+        ax = plt.axes()
+        if self.d == 2:
+            for i in range(self.n):
+                X = self.coalescent.labels[:,i,0]
+                Y = self.coalescent.labels[:,i,1]
+                ax.plot(X, Y)
+        else:
+            print("Not implemented.")
+            
+
+class _SLFV_dual(object):
     number_types = (int, float, np.int64, np.float64)
     def _set_r(self, r):
         assert type(r) in self.number_types, "Unexpected type for radius of reproduction events."
@@ -262,7 +318,14 @@ class SLFV_dual_heterogeneous_dispersal(SLFV_dual):
             
 if __name__ == "__main__":
     ##dual = SLFV_dual_heterogeneous_dispersal(L = 200, r_left = .8, r_right = 2, u = .3)
-    dual = SLFV_dual(L = 100, r = 1, u = .2, mutation_rate = .001, d=1)
-    dual.init_lineages_uniform(20)
-    dual.run_efficient(400, verbose = True)
-    dual.display_trajectory(thickness = .5)
+    dim = 2
+    radii = [1, 2]
+    impacts = [1, 1]
+    
+    T = 10
+    n = 20
+    lineages_init_positions = np.reshape(np.random.normal(0, 5, size = dim * n), (n, dim))
+    event_dist = event_drawer.DualHeterogeneous(impacts, radii, dim)
+    dual = SLFV_dual(event_dist, dim)
+    dual.run_coalescent(lineages_init_positions, T)
+    dual.display_trajectory()
