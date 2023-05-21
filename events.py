@@ -107,6 +107,18 @@ class DualFixedEvent(DualEventDist):
                   'parent position': parent_position}
         return params
 
+class TwoParentFixedRadius(DualFixedEvent):
+    def jump_rates(self, lineages_positions):
+        return np.ones(np.size(lineages_positions, axis = 0))
+    
+    def draw_event_params(self, lineage_position):
+        params = super().draw_event_params(lineage_position)
+        params['1st parent position'] = params['parent position']
+        second_parent = uniform_draw_from_ball(params['centre'],
+                                               params['radius'])
+        params['2nd parent position'] = second_parent
+        return params
+
 class DualHeterogeneous(DualEventDist):
     def __init__(self, impacts, radii, dim):
         super().__init__()
@@ -117,14 +129,14 @@ class DualHeterogeneous(DualEventDist):
         self.impacts = np.array(impacts)
         self.radii = np.array(radii)
         self.V = ball_volume(self.radii, dim)
-        self.rate = np.sum(self.impacts * self.radii)
+        self.rate = 2
         self.signs = np.array([-1, 1])
         
     def jump_rates(self, lineages_positions):
         return self.rate * np.ones(np.size(lineages_positions, axis = 0))
     
     def draw_event_params(self, lineage_position):
-        a = np.random.choice([0,1], p = self.impacts * self.radii / self.rate)
+        a = np.random.choice([0,1])
         centre = uniform_draw_from_ball(lineage_position, self.radii[a])
         if self.signs[a] * centre[0] < 0:
             raise IgnoreEvent()

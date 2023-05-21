@@ -11,7 +11,7 @@ import numpy.random as rand
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from . import frequency
-from . import event_drawer as events
+from . import events
 import time
 
 class SLFV(object):

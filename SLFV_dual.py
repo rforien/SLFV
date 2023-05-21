@@ -10,7 +10,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-import event_drawer
+from . import events
+from . import ARG
 
 class Labelled_Coalescent(object):
     def __init__(self, labels):
@@ -18,14 +19,16 @@ class Labelled_Coalescent(object):
         n = np.size(labels, axis = 0)
         self.coalescent = np.reshape(np.arange(n), (1,n))
         self.labels = np.reshape(labels, (1,) + np.shape(labels))
+        self.times = [0]
     
-    def single_merger(self, indices_to_merge, new_label):
+    def single_merger(self, time, indices_to_merge, new_label):
         merge = [i in indices_to_merge for i in self.coalescent[-1,]]
         if any(merge):
             self.coalescent = np.vstack((self.coalescent, self.coalescent[-1,]))
             self.labels = np.vstack((self.labels, np.reshape(self.labels[-1,], (1,) + np.shape(self.labels[-1,]))))
             self.labels[-1,merge,] = new_label
             self.coalescent[-1,merge] = np.min(indices_to_merge)
+        self.times.append(time)
     
     def kill(self, index):
         self.single_merger([index], np.reshape(np.nan*np.ones(np.size(self.labels[-1,0])), (1, np.size(self.labels[-1,0]))))
@@ -57,10 +60,11 @@ class SLFV_dual(object):
     def run_coalescent(self, lineages_init_positions, T):
         assert np.size(lineages_init_positions, axis = 1) == self.d
         self.n = np.size(lineages_init_positions, axis = 0)
-        self.coalescent = Labelled_Coalescent(lineages_init_positions)
+        self.init_coalescent(lineages_init_positions)
+        self.times = [0]
         t = 0
         while True:
-            positions = self.coalescent.current_labels()
+            positions = self.get_current_positions()
             # draw the time of next event
             rates = self.event_dist.jump_rates(positions)
             dt = np.random.exponential(1/np.sum(rates))
@@ -74,7 +78,7 @@ class SLFV_dual(object):
             i = np.random.choice(np.arange(len(rates)), p = rates / np.sum(rates))
             try:
                 params = self.event_dist.draw_event_params(positions[i])
-            except event_drawer.IgnoreEvent:
+            except events.IgnoreEvent:
                 continue
             lineages_in_ball = dist(positions, params['centre']) <= params['radius']
             assert lineages_in_ball[i], "Involved lineage not in the ball"
@@ -87,20 +91,88 @@ class SLFV_dual(object):
                     continue
             # add merger
             indices_to_merge = np.arange(len(invovled_lineages))[invovled_lineages == True]
-            self.coalescent.single_merger(indices_to_merge, params['parent position'])
-            
+            self.merge(t, indices_to_merge, params)
+            self.times.append(t)
+        self.times = np.array(self.times)
+    
+    def init_coalescent(self, lineages_init_positions):
+        self.coalescent = Labelled_Coalescent(lineages_init_positions)
+    
+    def get_current_positions(self):
+        return self.coalescent.current_labels()
+    
+    def merge(self, time, indices_to_merge, event_params):
+        self.coalescent.single_merger(time,
+                                      indices_to_merge, 
+                                      event_params['parent position'])
+
+    def ancestral_path(self, i):
+        if self.d == 2:
+            X = self.coalescent.labels[:,i,0]
+            Y = self.coalescent.labels[:,i,1]
+            return X, Y
+        elif self.d == 1:
+            return self.coalescent.labels[:,i,0]
+        
     def display_trajectory(self):
         plt.figure()
         ax = plt.axes()
         if self.d == 2:
             for i in range(self.n):
-                X = self.coalescent.labels[:,i,0]
-                Y = self.coalescent.labels[:,i,1]
+                X, Y = self.ancestral_path(i)
                 ax.plot(X, Y)
+        elif self.d == 1:
+            for i in range(self.n):
+                X = self.ancestral_path(i)
+                ax.plot(self.times, X)
         else:
             print("Not implemented.")
-            
 
+class SLFV_ARG(SLFV_dual):
+    def __init__(self, event_dist, dim, genome_length):
+        super().__init__(event_dist, dim)
+        assert genome_length > 0
+        self.G = genome_length
+    
+    def run_coalescent(self, lineages_init_positions, T,
+                       record_IBD_segments = False,
+                       min_segment_length = None):
+        if record_IBD_segments:
+            assert min_segment_length > 0
+        self.record_IBD_segments = record_IBD_segments
+        self.min_segment_length = min_segment_length
+        super().run_coalescent(lineages_init_positions, T)
+        if record_IBD_segments:
+            self.ARG.IBD_segments['length'] = self.ARG.IBD_segments['endpoint'] - \
+                self.ARG.IBD_segments['start']
+            self.ARG.IBD_segments = self.ARG.IBD_segments.loc[self.ARG.IBD_segments['length'] > self.min_segment_length]
+        
+    def init_coalescent(self, lineages_init_positions):
+        self.ARG = ARG.AncestralRecominationGraph(self.G, self.n,
+                                                  labels = lineages_init_positions)
+    
+    def get_current_positions(self):
+        return self.ARG.get_current_labels()
+    
+    def merge(self, time, indices_to_merge, event_params):
+        parent_positions = np.vstack((event_params['1st parent position'],
+                                      event_params['2nd parent position']))
+        self.ARG.add_merger(time, indices_to_merge,
+                            newlabels= parent_positions,
+                            record_IBD_segments=self.record_IBD_segments)
+        if self.record_IBD_segments:
+            self.ARG.drop_lineages(self.min_segment_length)
+    
+    def get_IBD_segments(self):
+        return self.ARG.IBD_segments
+    
+    def ancestral_path(self, i):
+        if self.d == 2:
+            pass
+        elif self.d == 1:
+            pass
+    
+'''
 class _SLFV_dual(object):
     number_types = (int, float, np.int64, np.float64)
     def _set_r(self, r):
@@ -183,7 +255,7 @@ class _SLFV_dual(object):
             return (4./3.)*np.pi*r**3
     
     def _reproduction_event(self, x = None, r = None):
-        ''' returns the genealogical 'map' from the previous generation to the next '''
+         returns the genealogical 'map' from the previous generation to the next
         if type(x) == type(None):
             x = self.L*np.random.random(self.d)
         else:
@@ -314,18 +386,19 @@ class SLFV_dual_heterogeneous_dispersal(SLFV_dual):
     def display_trajectory(self, *args, **kwargs):
         SLFV_dual.display_trajectory(self, *args, **kwargs)
         plt.vlines([0], 0, self.running_time)
-        
+'''
             
 if __name__ == "__main__":
     ##dual = SLFV_dual_heterogeneous_dispersal(L = 200, r_left = .8, r_right = 2, u = .3)
-    dim = 2
-    radii = [1, 2]
+    dim = 1
+    radii = [1, 3]
     impacts = [1, 1]
     
-    T = 10
-    n = 20
+    T = 1000
+    n = 10
     lineages_init_positions = np.reshape(np.random.normal(0, 5, size = dim * n), (n, dim))
-    event_dist = event_drawer.DualHeterogeneous(impacts, radii, dim)
+    event_dist = events.DualHeterogeneous(impacts, radii, dim)
     dual = SLFV_dual(event_dist, dim)
     dual.run_coalescent(lineages_init_positions, T)
     dual.display_trajectory()
+    plt.grid(True)
