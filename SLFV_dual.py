@@ -57,13 +57,14 @@ class SLFV_dual(object):
         self.d = dim
         self.event_dist = event_dist
     
-    def run_coalescent(self, lineages_init_positions, T):
+    def run_coalescent(self, lineages_init_positions, T, verbose = False):
         assert np.size(lineages_init_positions, axis = 1) == self.d
         self.n = np.size(lineages_init_positions, axis = 0)
         self.init_coalescent(lineages_init_positions)
         self.times = [0]
         t = 0
         while True:
+            print("Progress: %.1f%%" % 100*(t / T))
             positions = self.get_current_positions()
             # draw the time of next event
             rates = self.event_dist.jump_rates(positions)
@@ -145,32 +146,28 @@ class SLFV_ARG(SLFV_dual):
         if record_IBD_segments:
             self.ARG.IBD_segments['length'] = self.ARG.IBD_segments['endpoint'] - \
                 self.ARG.IBD_segments['start']
-            self.ARG.IBD_segments = self.ARG.IBD_segments.loc[self.ARG.IBD_segments['length'] > self.min_segment_length]
+            # self.ARG.IBD_segments = self.ARG.IBD_segments.loc[self.ARG.IBD_segments['length'] > self.min_segment_length]
         
     def init_coalescent(self, lineages_init_positions):
         self.ARG = ARG.AncestralRecominationGraph(self.G, self.n,
                                                   labels = lineages_init_positions)
     
     def get_current_positions(self):
-        return self.ARG.get_current_labels()
+        return self.ARG.get_current_labels().values
     
     def merge(self, time, indices_to_merge, event_params):
         parent_positions = np.vstack((event_params['1st parent position'],
                                       event_params['2nd parent position']))
-        self.ARG.add_merger(time, indices_to_merge,
+        lineage_indices = self.ARG.get_current_labels().index[indices_to_merge]
+        self.ARG.add_merger(time, lineage_indices,
                             newlabels= parent_positions,
-                            record_IBD_segments=self.record_IBD_segments)
+                            record_IBD_segments=self.record_IBD_segments,
+                            min_segment_length=self.min_segment_length)
         if self.record_IBD_segments:
             self.ARG.drop_lineages(self.min_segment_length)
     
     def get_IBD_segments(self):
         return self.ARG.IBD_segments
-    
-    def ancestral_path(self, i):
-        if self.d == 2:
-            pass
-        elif self.d == 1:
-            pass
     
 '''
 class _SLFV_dual(object):
