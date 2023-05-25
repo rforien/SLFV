@@ -191,6 +191,7 @@ class GenomePartition(object):
                                             'start': starts,
                                             'endpoint': ends})
         self.IBD_segments = pd.concat((self.IBD_segments, new_segments), ignore_index=True)
+        print("Found %d ibd segments so far." % len(self.IBD_segments))
     
     def drop_lineages(self, min_segment_length, inplace = True):
         if inplace:

@@ -22,12 +22,13 @@ class EventDist(ABC):
         return frequency
 
 class DualEventDist(ABC):
-    def __init__(self):
+    def __init__(self, dim, params):
+        assert type(dim) is int and dim >= 1
         self.rate = 1
+        self.d = dim
     
-    @abstractmethod
     def jump_rates(self, lineages_positions):
-        return np.size(lineages_positions, axis = 0)
+        return self.rate * np.ones(np.size(lineages_positions, axis = 0))
     
     @abstractmethod
     def draw_event_params(self, lineage_position):
@@ -43,10 +44,11 @@ class DualEventDist(ABC):
 
         Returns
         -------
-        parameters needed to run an event.
+        params: dict
+            parameters needed to run an event.
 
         '''
-        pass
+        return {}
 
 
 class FixedEvent(EventDist):
@@ -85,18 +87,12 @@ class IgnoreEvent(Exception):
     pass
 
 class DualFixedEvent(DualEventDist):
-    def __init__(self, impact, radius, dim):
-        super().__init__()
-        assert impact > 0 and impact <= 1
-        assert radius > 0
-        assert type(dim) == int and dim >= 1
-        self.d = dim
-        self.V = ball_volume(radius, dim)
-        self.u = impact
-        self.r = radius
-    
-    def jump_rates(self, lineages_positions):
-        return self.u * self.V * np.ones(np.size(lineages_positions, axis = 0))
+    def __init__(self, dim, params):
+        super().__init__(dim, params)
+        assert params['impact'] > 0 and params['impact'] <= 1
+        assert params['radius'] > 0
+        self.u = params['impact']
+        self.r = params['radius']
     
     def draw_event_params(self, lineage_position):
         centre = uniform_draw_from_ball(lineage_position, self.r)
@@ -104,13 +100,10 @@ class DualFixedEvent(DualEventDist):
         params = {'centre': centre,
                   'radius': self.r,
                   'impact': self.u,
-                  'parent position': parent_position}
+                  'parent position' : parent_position}
         return params
 
 class TwoParentFixedRadius(DualFixedEvent):
-    def jump_rates(self, lineages_positions):
-        return np.ones(np.size(lineages_positions, axis = 0))
-    
     def draw_event_params(self, lineage_position):
         params = super().draw_event_params(lineage_position)
         params['1st parent position'] = params['parent position']
@@ -120,20 +113,14 @@ class TwoParentFixedRadius(DualFixedEvent):
         return params
 
 class DualHeterogeneous(DualEventDist):
-    def __init__(self, impacts, radii, dim):
-        super().__init__()
-        assert np.min(impacts) > 0 and np.max(impacts) <= 1
-        assert np.min(radii) > 0
-        assert type(dim) == int and dim >= 1
-        self.d = dim
-        self.impacts = np.array(impacts)
-        self.radii = np.array(radii)
-        self.V = ball_volume(self.radii, dim)
+    def __init__(self, dim, params):
+        super().__init__(dim, params)
+        assert np.min(params['impacts']) > 0 and np.max(params['impacts']) <= 1
+        assert np.min(params['radii']) > 0
+        self.impacts = np.array(params['impacts'])
+        self.radii = np.array(params['radii'])
         self.rate = 2
         self.signs = np.array([-1, 1])
-        
-    def jump_rates(self, lineages_positions):
-        return self.rate * np.ones(np.size(lineages_positions, axis = 0))
     
     def draw_event_params(self, lineage_position):
         a = np.random.choice([0,1])
@@ -146,6 +133,22 @@ class DualHeterogeneous(DualEventDist):
                   'impact': self.impacts[a],
                   'parent position': parent_position}
         return params
+
+class TwoParentHeterogeneous(DualHeterogeneous, TwoParentFixedRadius):
+    def __init__(self, dim, params):
+        # add impact and radius values so that FixedRadius constructor runs smoothly
+        params['radius'] = 1
+        params['impact'] = 0.5
+        super().__init__(dim, params)
+    
+    def draw_event_params(self, lineage_position):
+        params = DualHeterogeneous.draw_event_params(self, lineage_position)
+        params['1st parent position'] = params['parent position']
+        second_parent = uniform_draw_from_ball(params['centre'],
+                                               params['radius'])
+        params['2nd parent position'] = second_parent
+        return params
+        
 
 class FixedEventWithMutation(FixedEvent):
     def __init__(self, impact_parameter, radius, mutation_proba):
