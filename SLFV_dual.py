@@ -131,11 +131,15 @@ class SLFV_dual(object):
             print("Not implemented.")
 
 class SLFV_ARG(SLFV_dual):
-    def __init__(self, event_dist, dim, genome_length, keep_full_record = False):
+    def __init__(self, event_dist, dim, genome_length, record_locii = None):
         super().__init__(event_dist, dim)
         assert genome_length > 0
         self.G = genome_length
-        self.full_record = bool(keep_full_record)
+        if record_locii is not None:
+            self.record = True
+            self.locii = np.array(record_locii)
+        else:
+            self.record = False
     
     def run_coalescent(self, lineages_init_positions, T,
                        record_IBD_segments = False,
@@ -150,10 +154,9 @@ class SLFV_ARG(SLFV_dual):
                 self.ARG.IBD_segments['start']
         
     def init_coalescent(self, lineages_init_positions):
-        if self.full_record:
-            self.ARG = ARG.AncestralRecominationGraph(self.G, self.n,
+        if self.record:
+            self.ARG = ARG.AncestralRecombinationGraph(self.G, self.n, self.locii,
                                                       labels = lineages_init_positions)
-            self.times = [0]
         else:
             self.ARG = ARG.GenomePartition(self.G, self.n, labels = lineages_init_positions)
     
@@ -168,8 +171,6 @@ class SLFV_ARG(SLFV_dual):
                                 newlabels= parent_positions,
                                 record_IBD_segments=self.record_IBD_segments,
                                 min_segment_length=self.min_segment_length)
-        if self.full_record:
-            self.times.append(time)
         if self.record_IBD_segments:
             self.ARG.drop_lineages(self.min_segment_length)
     
