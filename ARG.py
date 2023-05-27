@@ -13,8 +13,6 @@ import pandas as pd
 class GenomePartition(object):
     def __init__(self, genome_length, n, segments = None, labels = None):
         assert type(n) == int and n >= 1
-        if n > 50:
-            raise Exception("Not implemented for samples larger than 50.")
         self.n = int(n)
         assert genome_length >= 0
         self.G = genome_length
