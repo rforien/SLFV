@@ -64,7 +64,8 @@ class SLFV_dual(object):
         self.times = [0]
         t = 0
         while True:
-            print("Progress: %.1f%%" % (100*(t / T)))
+            if verbose:
+                print("Progress: %.1f%%" % (100*(t / T)))
             positions = self.get_current_positions()
             # draw the time of next event
             rates = self.event_dist.jump_rates(positions)
@@ -89,7 +90,8 @@ class SLFV_dual(object):
             # thinning to avoid multiple counting
             if np.sum(invovled_lineages) > 1:
                 if np.random.uniform() > 1/np.sum(invovled_lineages):
-                    print("Ignoring event")
+                    if verbose:
+                        print("Ignoring event")
                     continue
             # add merger
             indices_to_merge = np.arange(len(invovled_lineages))[invovled_lineages == True]
@@ -143,7 +145,8 @@ class SLFV_ARG(SLFV_dual):
     
     def run_coalescent(self, lineages_init_positions, T,
                        record_IBD_segments = False,
-                       min_segment_length = None):
+                       min_segment_length = None,
+                       verbose = False):
         if record_IBD_segments:
             assert min_segment_length > 0
         self.record_IBD_segments = record_IBD_segments
