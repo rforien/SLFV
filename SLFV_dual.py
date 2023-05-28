@@ -151,7 +151,7 @@ class SLFV_ARG(SLFV_dual):
             assert min_segment_length > 0
         self.record_IBD_segments = record_IBD_segments
         self.min_segment_length = min_segment_length
-        super().run_coalescent(lineages_init_positions, T)
+        super().run_coalescent(lineages_init_positions, T, verbose=verbose)
         if record_IBD_segments:
             self.ARG.IBD_segments['length'] = self.ARG.IBD_segments['endpoint'] - \
                 self.ARG.IBD_segments['start']
