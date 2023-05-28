@@ -95,7 +95,7 @@ class SLFV_dual(object):
                     continue
             # add merger
             indices_to_merge = np.arange(len(invovled_lineages))[invovled_lineages == True]
-            self.merge(t, indices_to_merge, params)
+            self.merge(t, indices_to_merge, params, verbose = verbose)
             self.times.append(t)
         self.times = np.array(self.times)
     
@@ -105,7 +105,7 @@ class SLFV_dual(object):
     def get_current_positions(self):
         return self.coalescent.current_labels()
     
-    def merge(self, time, indices_to_merge, event_params):
+    def merge(self, time, indices_to_merge, event_params, verbose = False):
         self.coalescent.single_merger(time,
                                       indices_to_merge, 
                                       event_params['parent position'])
@@ -166,14 +166,15 @@ class SLFV_ARG(SLFV_dual):
     def get_current_positions(self):
         return self.ARG.labels.values
     
-    def merge(self, time, indices_to_merge, event_params):
+    def merge(self, time, indices_to_merge, event_params, verbose = False):
         parent_positions = np.vstack((event_params['1st parent position'],
                                       event_params['2nd parent position']))
         lineage_indices = self.ARG.labels.index[indices_to_merge]
         self.ARG.merge_lineages(lineage_indices,
                                 newlabels= parent_positions,
                                 record_IBD_segments=self.record_IBD_segments,
-                                min_segment_length=self.min_segment_length)
+                                min_segment_length=self.min_segment_length,
+                                verbose = verbose)
         if self.record_IBD_segments:
             self.ARG.drop_lineages(self.min_segment_length)
     

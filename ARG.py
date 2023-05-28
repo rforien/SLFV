@@ -130,12 +130,13 @@ class GenomePartition(object):
     def merge_lineages(self, lineages_to_merge, newlabels = None,
                        save_patterns = False,
                        record_IBD_segments = False,
-                       min_segment_length = None):
+                       min_segment_length = None,
+                       verbose = False):
         new_lineages = self.get_new_lineages_indexes(lineages_to_merge)
         pattern = self.draw_recombination_pattern(len(lineages_to_merge), new_lineages)
         new_segments = self.split_segments(lineages_to_merge, pattern)
         if record_IBD_segments:
-            self.find_ibd(new_segments, min_segment_length)
+            self.find_ibd(new_segments, min_segment_length, verbose = verbose)
         # undo the offset created during the recombination
         new_segments.loc[:,'start'] = np.mod(new_segments['start'], self.G)
         new_segments.loc[:,'end'] = self.G - np.mod(-new_segments['end'], self.G)
@@ -151,7 +152,7 @@ class GenomePartition(object):
             self.labels.drop(self.labels.index[~np.isin(self.labels.index, self.lineages)],
                              inplace = True)
     
-    def find_ibd(self, segments, min_segment_length):
+    def find_ibd(self, segments, min_segment_length, verbose = False):
         if not hasattr(self, 'IBD_segments'):
             self.IBD_segments = pd.DataFrame(columns = ['individual1', 'individual2', 'start', 'endpoint'])
         if segments.empty or np.max(segments['start']) < self.G:
@@ -189,7 +190,8 @@ class GenomePartition(object):
                                             'start': starts,
                                             'endpoint': ends})
         self.IBD_segments = pd.concat((self.IBD_segments, new_segments), ignore_index=True)
-        print("Found %d ibd segments so far." % len(self.IBD_segments))
+        if verbose:
+            print("Found %d ibd segments so far." % len(self.IBD_segments))
     
     def drop_lineages(self, min_segment_length, inplace = True):
         if inplace:
