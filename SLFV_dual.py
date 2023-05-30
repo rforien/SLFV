@@ -65,6 +65,14 @@ class SLFV_dual(object):
         self.times = [0]
         t = 0
         last_tic = time.time()
+        # tics = [time.time()]
+        # steps = ['ignoring events',
+        #           'draw next event time',
+        #           'draw event parameters',
+        #           'draw involved lineages',
+        #           'compute merge']
+        # totals = np.zeros(len(steps))
+        # n = 0
         while True:
             if verbose:
                 print("Progress: %.1f%%" % (100*(t / T)))
@@ -72,6 +80,8 @@ class SLFV_dual(object):
                 tic = time.time()
                 if tic > last_tic + 3600:
                     print("Progress: %.1f%%" % (100*(t / T)))
+                    last_tic = tic
+            # tics.append(time.time())
             positions = self.get_current_positions()
             # draw the time of next event
             rates = self.event_dist.jump_rates(positions)
@@ -82,12 +92,15 @@ class SLFV_dual(object):
                 break
             else:
                 t = t + dt
+            # tics.append(time.time())
             # draw the lineage involved in the event
             i = np.random.choice(np.arange(len(rates)), p = rates / np.sum(rates))
             try:
                 params = self.event_dist.draw_event_params(positions[i])
             except events.IgnoreEvent:
+                # tics = [tics[0]]
                 continue
+            # tics.append(time.time())
             lineages_in_ball = dist(positions, params['centre']) <= params['radius']
             assert lineages_in_ball[i], "Involved lineage not in the ball"
             invovled_lineages = np.random.binomial(1, 
@@ -98,11 +111,22 @@ class SLFV_dual(object):
                 if np.random.uniform() > 1/np.sum(invovled_lineages):
                     if verbose:
                         print("Ignoring event")
+                    # tics = [tics[0]]
                     continue
+            # tics.append(time.time())
             # add merger
             indices_to_merge = np.arange(len(invovled_lineages))[invovled_lineages == True]
             self.merge(t, indices_to_merge, params, verbose = verbose)
             self.times.append(t)
+            # tics.append(time.time())
+            # totals = totals + np.diff(tics)
+            # percents = totals / np.sum(totals) * 100
+            # n = n + 1
+            # print("Number of lineages: %d." % len(self.ARG.lineages))
+            # for (dt, step) in zip(percents, steps):
+            #     print(step + ': %f percent' % dt)
+            # print("Total: %f" % (np.sum(totals)/n))
+            # tics = [time.time()]
         self.times = np.array(self.times)
     
     def init_coalescent(self, lineages_init_positions):
@@ -159,8 +183,7 @@ class SLFV_ARG(SLFV_dual):
         self.min_segment_length = min_segment_length
         super().run_coalescent(lineages_init_positions, T, verbose=verbose)
         if record_IBD_segments:
-            self.ARG.IBD_segments['length'] = self.ARG.IBD_segments['endpoint'] - \
-                self.ARG.IBD_segments['start']
+            self.IBD_segments = self.ARG.IBD_segments.to_DataFrame()
         
     def init_coalescent(self, lineages_init_positions):
         if self.record:
@@ -170,13 +193,13 @@ class SLFV_ARG(SLFV_dual):
             self.ARG = ARG.GenomePartition(self.G, self.n, labels = lineages_init_positions)
     
     def get_current_positions(self):
-        return self.ARG.labels.values
+        return self.ARG.labels
     
     def merge(self, time, indices_to_merge, event_params, verbose = False):
         parent_positions = np.vstack((event_params['1st parent position'],
                                       event_params['2nd parent position']))
-        lineage_indices = self.ARG.labels.index[indices_to_merge]
-        self.ARG.merge_lineages(lineage_indices,
+        lineages_to_merge = self.ARG.lineages[indices_to_merge]
+        self.ARG.merge_lineages(lineages_to_merge,
                                 newlabels= parent_positions,
                                 record_IBD_segments=self.record_IBD_segments,
                                 min_segment_length=self.min_segment_length,
@@ -185,8 +208,7 @@ class SLFV_ARG(SLFV_dual):
             self.ARG.drop_lineages(self.min_segment_length)
     
     def get_IBD_segments(self):
-        return self.ARG.IBD_segments
-    
+        return self.ARG.IBD_segments.to_DataFrame()
             
 if __name__ == "__main__":
     ##dual = SLFV_dual_heterogeneous_dispersal(L = 200, r_left = .8, r_right = 2, u = .3)

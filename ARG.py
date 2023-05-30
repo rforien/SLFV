@@ -9,6 +9,80 @@ Created on Sat May 13 14:14:29 2023
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import time
+
+class SegmentList(object):
+    def __init__(self, starts, ends, individuals, lineages):
+        self.starts = starts
+        self.ends = ends
+        self.individuals = individuals
+        self.lineages = lineages
+    
+    def __len__(self):
+        return np.size(self.starts)
+    
+    def from_DataFrame(self, df):
+        self.starts = df['start']
+        self.ends = df['end']
+        self.individuals = df['individual']
+        self.lineages = df['lineage']
+    
+    def to_DataFrame(self):
+        df = pd.DataFrame(data = {'individual': self.individuals,
+                                        'lineage': self.lineages,
+                                        'start': self.starts,
+                                        'end': self.ends})
+        return df
+    
+    def iterate(self):
+        return zip(self.individuals, self.lineages, self.starts, self.ends)
+    
+    def fold_back(self, G):
+        self.starts = np.mod(self.starts, G)
+        self.ends = G - np.mod(-self.ends, G)
+    
+    def join(self, index, new_segments):
+        self.starts = np.hstack((self.starts[index], new_segments.starts))
+        self.ends = np.hstack((self.ends[index], new_segments.ends))
+        self.individuals = np.hstack((self.individuals[index], new_segments.individuals))
+        self.lineages = np.hstack((self.lineages[index], new_segments.lineages))
+    
+    def drop(self, index):
+        self.starts = self.starts[~index]
+        self.ends = self.ends[~index]
+        self.individuals = self.individuals[~index]
+        self.lineages = self.lineages[~index]
+
+class RecombinationPattern(object):
+    def __init__(self, startpoints, endpoints, lineages):
+        self.startpoints = startpoints
+        self.endpoints = endpoints
+        self.lineages = lineages
+    
+    def __len__(self):
+        return np.size(self.startpoints)
+
+class IBDSegmentList(object):
+    def __init__(self, pairs, starts, ends):
+        self.pairs = pairs
+        self.starts = starts
+        self.ends = ends
+    
+    def __len__(self):
+        return np.size(self.starts)
+    
+    def add(self, pairs, starts, ends):
+        self.pairs = np.concatenate((self.pairs, pairs), axis = 0)
+        self.starts = np.concatenate((self.starts, starts))
+        self.ends = np.concatenate((self.ends, ends))
+    
+    def to_DataFrame(self):
+        pairs = [list(pair) for pair in self.pairs]
+        df = pd.DataFrame(data = {'pair': pairs,
+                                  'start': self.starts,
+                                  'end': self.ends,
+                                  'length': self.ends - self.starts})
+        return df
 
 class GenomePartition(object):
     def __init__(self, genome_length, n, segments = None, labels = None):
@@ -16,41 +90,52 @@ class GenomePartition(object):
         self.n = int(n)
         assert genome_length >= 0
         self.G = genome_length
-        if segments is None:
-            self.init_segments(self.n)
-        else:
-            assert isinstance(segments, pd.DataFrame)
-            self.segments = segments
-        if labels is not None:
-            if not (isinstance(labels, pd.DataFrame) or isinstance(labels, pd.Series)):
-                labels = pd.DataFrame(data = labels)
-            lineages = self.lineages
-            # drop labels of lineages who do not carry any segments
-            self.labels = labels.loc[np.isin(labels.index, lineages)]
-            assert np.isin(lineages, self.labels.index).all(), "Missing labels"
-        else:
-            self.labels = None
+        self.init_segments(segments)
+        self.init_labels(labels)
+        self.steps = ['drawing recombination pattern',
+                      'splitting segments',
+                      'finding ibd segments',
+                      'updating segment dataframe',
+                      'updating labels']
+        self.totals = np.zeros(len(self.steps))
+        self.ntics = 0
     
     def __len__(self):
         return len(self.lineages)
     
-    def _get_lineages(self):
-        return np.unique(self.segments['lineage'].values)
-    def _set_lineages(self, l):
-        pass
-    lineages = property(_get_lineages, _set_lineages)
+    def init_segments(self, segments = None):
+        if segments is not None:
+            assert type(segments) is pd.DataFrame
+            self.segments = SegmentList.from_DataFrame(segments)
+            self.lineages = np.unique(self.segments.lineages)
+        else:
+            self.segments = SegmentList(starts = np.zeros(self.n), 
+                                        ends = self.G * np.ones(self.n), 
+                                        individuals = np.arange(self.n), 
+                                        lineages = np.arange(self.n))
+            self.lineages = np.arange(self.n)
     
-    def init_segments(self, n):
-        self.segments = pd.DataFrame(data = {'individual': np.arange(self.n),
-                                             'lineage': np.arange(self.n),
-                                             'start': np.zeros(self.n),
-                                             'end': self.G * np.ones(self.n)})
+    def init_labels(self, labels = None):
+        if labels is not None:
+            self.labels = np.array(labels)
+            assert np.size(self.labels, axis = 0) == len(self), "Wrong number of labels"
+        else:
+            self.labels = None
+    
+    def get_segments(self):
+        return self.segments.to_DataFrame()
     
     def partition(self, locus):
-        segments_at_locus = self.segments.loc[np.logical_and(self.segments['start'] <= locus,
-                                                             self.segments['end'] > locus)]
-        partition = segments_at_locus.set_index('individual')['lineage']
-        return partition.sort_index()
+        at_locus = np.logical_and(self.segments.starts <= locus,
+                                  self.segments.ends > locus)
+        inverse = np.argsort(self.segments.individuals[at_locus])
+        partition = self.segments.lineages[at_locus][inverse]
+        return partition
+    
+    def labels_at_locus(self, locus):
+        partition = self.partition(locus)
+        indexes = np.array([np.where(self.lineages == l)[0][0] for l in partition])
+        return self.labels[indexes]
     
     def plot_partition(self, ax = None):
         if ax is None:
@@ -58,11 +143,11 @@ class GenomePartition(object):
             ax = plt.axes()
         prop_cycle = plt.rcParams['axes.prop_cycle']
         colors = prop_cycle.by_key()['color']
-        for (index, segment) in self.segments.iterrows():
-            y = segment['individual']
+        for (individual, lineage, start, end) in self.segments.iterate():
+            y = individual
             y = [y, y]
-            x = [segment['start'], segment['end']]
-            color = colors[np.mod(segment['lineage'], len(colors)).astype(int)]
+            x = [start, end]
+            color = colors[np.mod(lineage, len(colors)).astype(int)]
             ax.plot(x, y, color = color, linewidth = 2)
         return ax
     
@@ -74,18 +159,18 @@ class GenomePartition(object):
         colors = prop_cycle.by_key()['color']
         for i in self.lineages:
             ax.plot([0, self.G], [i, i], linewidth = linewidth * 0.8, color = 'black')
-        for (index, segment) in self.segments.iterrows():
-            y = segment['lineage'] + np.random.normal(0, 0.1)
+        for (individual, lineage, start, end) in self.segments.iterate():
+            y = lineage + np.random.normal(0, 0.1)
             y = [y, y]
-            x = [segment['start'], segment['end']]
-            color = colors[np.mod(segment['individual'], len(colors)).astype(int)]
+            x = [start, end]
+            color = colors[np.mod(individual, len(colors)).astype(int)]
             ax.plot(x, y, linewidth = linewidth, color = color)
         return ax
         
     def draw_recombination_pattern(self, nb_recombining, new_lineages):
         assert type(nb_recombining) is int and nb_recombining > 0
         nb_cross_overs = np.random.poisson(self.G * nb_recombining)
-        cross_overs = np.sort(np.random.uniform(0, self.G * nb_recombining, size = nb_cross_overs))
+        cross_overs = np.random.uniform(0, self.G * nb_recombining, size = nb_cross_overs)
         parent_offset = np.random.binomial(1, 0.5, size = nb_recombining)
         
         startpoints = np.sort(np.hstack((cross_overs, self.G * np.arange(nb_recombining))))
@@ -93,37 +178,34 @@ class GenomePartition(object):
         parents = np.mod(parent_offset[id_recombining] + np.arange(nb_recombining + nb_cross_overs), 2).astype(int)
         lineages = np.array(new_lineages)[parents]
         endpoints = np.hstack((startpoints[1:], [self.G * nb_recombining]))
-        R = pd.DataFrame(data = {'lineage': lineages,
-                                 'start': startpoints,
-                                 'end': endpoints})
+        R = RecombinationPattern(startpoints, endpoints, lineages)
         return R
     
     def split_segments(self, lineages, rec_pattern):
-        segments = self.segments.loc[np.isin(self.segments['lineage'], lineages)]
+        rec_index = np.isin(self.segments.lineages, lineages)
         # shift the segments belonging to different individuals so that they each recombine independently
         offset = self.G * (np.cumsum(np.isin(np.arange(np.max(lineages)+1), lineages))-1)
-        starts = segments['start'] + offset[segments['lineage']]
-        ends = segments['end'] + offset[segments['lineage']]
-        n_seg = len(segments)
+        starts = self.segments.starts[rec_index] + offset[self.segments.lineages[rec_index]]
+        ends = self.segments.ends[rec_index] + offset[self.segments.lineages[rec_index]]
+        n_seg = np.sum(rec_index)
         n_rec = len(rec_pattern)
-        individuals = np.tile(segments['individual'], n_rec)
+        individuals = np.tile(self.segments.individuals[rec_index], n_rec)
         # compute start and end for new segments
         starts = np.maximum(np.tile(starts, n_rec),
-                            np.repeat(rec_pattern['start'], n_seg))
+                            np.repeat(rec_pattern.startpoints, n_seg))
         ends = np.minimum(np.tile(ends, n_rec),
-                          np.repeat(rec_pattern['end'], n_seg))
-        lineages = np.repeat(rec_pattern['lineage'], n_seg)
-        split_segments = pd.DataFrame(data = {'individual': individuals,
-                                              'lineage': lineages,
-                                              'start': starts,
-                                              'end': ends})
-        # keep only segments with positive length
-        split_segments = split_segments.loc[split_segments['start'] < split_segments['end']]
-        return split_segments
+                          np.repeat(rec_pattern.endpoints, n_seg))
+        lineages = np.repeat(rec_pattern.lineages, n_seg)
+        positive_length = (starts < ends).astype(bool)
+        starts = starts[positive_length]
+        ends = ends[positive_length]
+        lineages = lineages[positive_length]
+        individuals = individuals[positive_length]
+        return SegmentList(starts, ends, individuals, lineages)
     
-    def get_new_lineages_indexes(self, lineages_to_merge):
+    def get_new_lineages_indexes(self, remaining_index):
         indexes = np.arange(len(self) + 2)
-        remaining = self.lineages[~np.isin(self.lineages, lineages_to_merge)]
+        remaining = self.lineages[remaining_index]
         newlineages = indexes[~np.isin(indexes, remaining)][:2]
         return newlineages
     
@@ -132,35 +214,56 @@ class GenomePartition(object):
                        record_IBD_segments = False,
                        min_segment_length = None,
                        verbose = False):
-        new_lineages = self.get_new_lineages_indexes(lineages_to_merge)
+        # tics = [time.time()]
+        remaining_index = ~np.isin(self.lineages, lineages_to_merge)
+        new_lineages = self.get_new_lineages_indexes(remaining_index)
         pattern = self.draw_recombination_pattern(len(lineages_to_merge), new_lineages)
+        if save_patterns:
+            if not hasattr(self, 'patterns'):
+                self.patterns = []
+            self.patterns.append(pattern)
+        # tics.append(time.time())
         new_segments = self.split_segments(lineages_to_merge, pattern)
+        # tics.append(time.time())
         if record_IBD_segments:
             self.find_ibd(new_segments, min_segment_length, verbose = verbose)
+        # tics.append(time.time())
         # undo the offset created during the recombination
-        new_segments.loc[:,'start'] = np.mod(new_segments['start'], self.G)
-        new_segments.loc[:,'end'] = self.G - np.mod(-new_segments['end'], self.G)
+        new_segments.fold_back(self.G)
         # update segments
-        self.segments = pd.concat((self.segments.loc[~np.isin(self.segments['lineage'], lineages_to_merge)],
-                                   new_segments), ignore_index = True)
+        self.segments.join(~np.isin(self.segments.lineages, lineages_to_merge),
+                           new_segments)
+        # update lineages
+        remaining_new = np.isin(new_lineages, new_segments.lineages)
+        self.lineages = np.hstack((self.lineages[remaining_index], 
+                                   new_lineages[remaining_new]))
+        # tics.append(time.time())
+        # update labels
         if self.labels is not None:
-            if not (isinstance(newlabels, pd.Series) or isinstance(newlabels, pd.DataFrame)):
-                newlabels = pd.DataFrame(newlabels)
-            newlabels.index = new_lineages
-            self.labels = pd.concat((self.labels.drop(lineages_to_merge),
-                                     newlabels))
-            self.labels.drop(self.labels.index[~np.isin(self.labels.index, self.lineages)],
-                             inplace = True)
+            newlabels = np.array(newlabels)
+            self.labels = np.concatenate((self.labels[remaining_index,:], 
+                                          newlabels[remaining_new]))
+        # tics.append(time.time())
+        # self.totals = self.totals + np.diff(tics)
+        # self.ntics = self.ntics + 1
+        # percents = 100 * self.totals / np.sum(self.totals)
+        # tot = np.sum(self.totals) / self.ntics
+        # print("Number of lineages: %d." % len(self.lineages))
+        # for dt, step in zip(percents, self.steps):
+        #     print(step + ': %f percent.' % dt)
+        # print("Total: %f s." % tot)
     
     def find_ibd(self, segments, min_segment_length, verbose = False):
         if not hasattr(self, 'IBD_segments'):
-            self.IBD_segments = pd.DataFrame(columns = ['individual1', 'individual2', 'start', 'endpoint'])
-        if segments.empty or np.max(segments['start']) < self.G:
+            self.IBD_segments = IBDSegmentList(np.zeros((0,2)), np.array([]), np.array([]))
+        if len(segments) == 0:
+            return
+        if np.max(segments.starts) < self.G:
             return
         assert min_segment_length > 0
         # remove offsets
-        startpoints = np.mod(segments['start'], self.G)
-        endpoints = self.G - np.mod(-segments['end'], self.G)
+        startpoints = np.mod(segments.starts, self.G)
+        endpoints = self.G - np.mod(-segments.ends, self.G)
         # compute lengths of segments
         S1, S2 = np.meshgrid(startpoints, startpoints)
         E1, E2 = np.meshgrid(endpoints, endpoints)
@@ -169,10 +272,10 @@ class GenomePartition(object):
         lengths = End - Start
         lengths = np.maximum(lengths, 0)
         # keep segments who end up in the same lineage
-        L1, L2 = np.meshgrid(segments['lineage'], segments['lineage'])
+        L1, L2 = np.meshgrid(segments.lineages, segments.lineages)
         lengths = lengths * (L1 == L2)
         # keep segments who come from different lineages just before the event
-        previous_lineage = segments['start'] // self.G
+        previous_lineage = segments.starts // self.G
         pL1, pL2 = np.meshgrid(previous_lineage, previous_lineage)
         lengths = lengths * (pL1 != pL2)
         # remove duplicates
@@ -181,27 +284,18 @@ class GenomePartition(object):
         lengths = lengths * (i < j)
         # retrieve indices of segments longer than threshold length
         pairs = np.argwhere(lengths > min_segment_length)
-        ind1 = segments['individual'].values[pairs[:,0]]
-        ind2 = segments['individual'].values[pairs[:,1]]
         starts = Start[pairs[:,0], pairs[:,1]]
         ends = End[pairs[:,0], pairs[:,1]]
-        new_segments = pd.DataFrame(data = {'individual1': ind1,
-                                            'individual2': ind2,
-                                            'start': starts,
-                                            'endpoint': ends})
-        self.IBD_segments = pd.concat((self.IBD_segments, new_segments), ignore_index=True)
+        self.IBD_segments.add(pairs, starts, ends)
         if verbose:
             print("Found %d ibd segments so far." % len(self.IBD_segments))
     
-    def drop_lineages(self, min_segment_length, inplace = True):
-        if inplace:
-            self.segments.drop(self.segments.index[self.segments['end'] - 
-                                                   self.segments['start'] < min_segment_length],
-                              inplace = True)
-            return self
-        else:
-            segments = self.segments.loc[self.segments['end'] - self.segments['start'] >= min_segment_length]
-            return GenomePartition(self.G, self.n, segments, self.labels)
+    def drop_lineages(self, min_segment_length):
+        self.segments.drop(self.segments.ends - self.segments.starts < min_segment_length)
+        remaining = np.isin(self.lineages, self.segments.lineages)
+        self.lineages = self.lineages[remaining]
+        if self.labels is not None:
+            self.labels = self.labels[remaining,:]
 
 class AncestralRecombinationGraph(GenomePartition):
     def __init__(self, genome_length, n, locii, segments = None, labels = None):
@@ -209,23 +303,23 @@ class AncestralRecombinationGraph(GenomePartition):
         assert locii.ndim == 1 and np.max(locii) < genome_length
         super().__init__(genome_length, n, segments = segments, labels = labels)
         self.locii = locii
-        self.partition_record = np.array([[self.partition(locus).values for locus in self.locii]])
+        self.partition_record = np.array([[self.partition(locus) for locus in self.locii]])
         if self.labels is not None:
-            self.label_record = np.array([[self.labels.loc[self.partition(locus).values] 
-                                 for locus in self.locii]])
+            self.label_record = np.array([[self.labels_at_locus(l) for l in self.locii]])
     
     def merge_lineages(self, lineages_to_merge, newlabels = None,
                        save_patterns = False,
                        record_IBD_segments = False,
-                       min_segment_length = None):
+                       min_segment_length = None,
+                       verbose = False):
         super().merge_lineages(lineages_to_merge, newlabels, save_patterns,
-                               record_IBD_segments, min_segment_length)
+                               record_IBD_segments, min_segment_length, verbose)
         self.partition_record = np.vstack((self.partition_record,
-                                           np.array([[self.partition(locus).values for locus in self.locii]])))
+                                           np.array([[self.partition(locus) for locus in self.locii]])))
         if self.labels is not None:
             self.label_record = np.vstack((self.label_record,
-                                           np.array([[self.labels.loc[self.partition(locus).values]
-                                                      for locus in self.locii]])))
+                                           np.array([[self.labels_at_locus(l) 
+                                                     for l in self.locii]])))
     
     def drop_lineages(self, min_segment_length):
         print("Warning: cannot drop lineages in ARG.")
