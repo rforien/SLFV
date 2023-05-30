@@ -9,6 +9,7 @@ Created on Fri Nov  2 11:15:57 2018
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
+import time
 
 from . import events
 from . import ARG
@@ -63,9 +64,14 @@ class SLFV_dual(object):
         self.init_coalescent(lineages_init_positions)
         self.times = [0]
         t = 0
+        last_tic = time.time()
         while True:
             if verbose:
                 print("Progress: %.1f%%" % (100*(t / T)))
+            else:
+                tic = time.time()
+                if tic > last_tic + 3600:
+                    print("Progress: %.1f%%" % (100*(t / T)))
             positions = self.get_current_positions()
             # draw the time of next event
             rates = self.event_dist.jump_rates(positions)
