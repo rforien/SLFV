@@ -101,21 +101,25 @@ class SLFV_dual(object):
                 # tics = [tics[0]]
                 continue
             # tics.append(time.time())
-            lineages_in_ball = dist(positions, params['centre']) <= params['radius']
-            assert lineages_in_ball[i], "Involved lineage not in the ball"
-            invovled_lineages = np.random.binomial(1, 
-                                    p = lineages_in_ball * params['impact'])
-            invovled_lineages[i] = 1
-            # thinning to avoid multiple counting
-            if np.sum(invovled_lineages) > 1:
-                if np.random.uniform() > 1/np.sum(invovled_lineages):
-                    if verbose:
-                        print("Ignoring event")
-                    # tics = [tics[0]]
-                    continue
+            lineages = np.arange(np.size(positions, axis = 0))
+            in_ball = dist(positions, params['centre']) <= params['radius']
+            nb_in_ball = np.sum(in_ball)
+            if nb_in_ball == 1:
+                indices_to_merge = np.array([i])
+            else:
+                in_ball[i] = False
+                involved = np.random.binomial(1, params['impact'], 
+                                              size = nb_in_ball-1).astype(bool)
+                indices_to_merge = np.hstack(([i], lineages[in_ball][involved]))
+                # thinning to avoid multiple counting
+                if np.size(indices_to_merge) > 1:
+                    if np.random.uniform() > 1/np.size(indices_to_merge):
+                        if verbose:
+                            print("Ignoring event")
+                        # tics = [tics[0]]
+                        continue
             # tics.append(time.time())
             # add merger
-            indices_to_merge = np.arange(len(invovled_lineages))[invovled_lineages == True]
             self.merge(t, indices_to_merge, params, verbose = verbose)
             self.times.append(t)
             # tics.append(time.time())

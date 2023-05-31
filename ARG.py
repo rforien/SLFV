@@ -295,7 +295,7 @@ class GenomePartition(object):
         remaining = np.isin(self.lineages, self.segments.lineages)
         self.lineages = self.lineages[remaining]
         if self.labels is not None:
-            self.labels = self.labels[remaining,:]
+            self.labels = self.labels[remaining]
 
 class AncestralRecombinationGraph(GenomePartition):
     def __init__(self, genome_length, n, locii, segments = None, labels = None):
