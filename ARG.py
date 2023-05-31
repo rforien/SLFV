@@ -77,8 +77,8 @@ class IBDSegmentList(object):
         self.ends = np.concatenate((self.ends, ends))
     
     def to_DataFrame(self):
-        pairs = [list(pair) for pair in self.pairs]
-        df = pd.DataFrame(data = {'pair': pairs,
+        df = pd.DataFrame(data = {'individual1': self.pairs[:,0],
+                                  'individual2': self.pairs[:,1],
                                   'start': self.starts,
                                   'end': self.ends,
                                   'length': self.ends - self.starts})
