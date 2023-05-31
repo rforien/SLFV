@@ -176,11 +176,21 @@ class SLFV_ARG(SLFV_dual):
     def run_coalescent(self, lineages_init_positions, T,
                        record_IBD_segments = False,
                        min_segment_length = None,
-                       verbose = False):
+                       verbose = False,
+                       dump_interval = None,
+                       dump_filename = None):
         if record_IBD_segments:
             assert min_segment_length > 0
+        if dump_interval is None:
+            self.dump_interval = np.inf
+        else:
+            assert dump_interval > 0
+            assert dump_filename is not None
+            self.dump_interval = dump_interval
+            self.dump_file_name = dump_filename
         self.record_IBD_segments = record_IBD_segments
         self.min_segment_length = min_segment_length
+        self.dump_tic = time.time()
         super().run_coalescent(lineages_init_positions, T, verbose=verbose)
         if record_IBD_segments:
             self.IBD_segments = self.ARG.IBD_segments.to_DataFrame()
@@ -206,6 +216,9 @@ class SLFV_ARG(SLFV_dual):
                                 verbose = verbose)
         if self.record_IBD_segments:
             self.ARG.drop_lineages(self.min_segment_length)
+            dump_tic = time.time()
+            if dump_tic > self.dump_tic + self.dump_interval:
+                self.ARG.IBD_segments.to_DataFrame().to_csv(self.dump_file_name)
     
     def get_IBD_segments(self):
         return self.ARG.IBD_segments.to_DataFrame()
