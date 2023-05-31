@@ -218,7 +218,9 @@ class SLFV_ARG(SLFV_dual):
             self.ARG.drop_lineages(self.min_segment_length)
             dump_tic = time.time()
             if dump_tic > self.dump_tic + self.dump_interval:
+                print("Dumping in %s." % self.dump_file_name)
                 self.ARG.IBD_segments.to_DataFrame().to_csv(self.dump_file_name)
+                self.dump_tic = dump_tic
     
     def get_IBD_segments(self):
         return self.ARG.IBD_segments.to_DataFrame()
