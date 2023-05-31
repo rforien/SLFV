@@ -135,8 +135,8 @@ class SLFV_dual(object):
     def get_current_positions(self):
         return self.coalescent.current_labels()
     
-    def merge(self, time, indices_to_merge, event_params, verbose = False):
-        self.coalescent.single_merger(time,
+    def merge(self, merge_time, indices_to_merge, event_params, verbose = False):
+        self.coalescent.single_merger(merge_time,
                                       indices_to_merge, 
                                       event_params['parent position'])
 
@@ -205,7 +205,7 @@ class SLFV_ARG(SLFV_dual):
     def get_current_positions(self):
         return self.ARG.labels
     
-    def merge(self, time, indices_to_merge, event_params, verbose = False):
+    def merge(self, merge_time, indices_to_merge, event_params, verbose = False):
         parent_positions = np.vstack((event_params['1st parent position'],
                                       event_params['2nd parent position']))
         lineages_to_merge = self.ARG.lineages[indices_to_merge]
