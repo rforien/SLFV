@@ -119,11 +119,24 @@ class DualHeterogeneous(DualEventDist):
         assert np.min(params['radii']) > 0
         self.impacts = np.array(params['impacts'])
         self.radii = np.array(params['radii'])
-        self.rate = 2
+        self.R = np.max(self.radii)
         self.signs = np.array([-1, 1])
     
+    def jump_rates(self, lineages_positions):
+        if self.d > 1:
+            first_coords = lineages_positions[:,0]
+        else:
+            first_coords = lineages_positions
+        rates = np.ones(np.size(first_coords)) + (np.abs(first_coords) < self.R).astype(float)
+        return rates
+    
     def draw_event_params(self, lineage_position):
-        a = np.random.choice([0,1])
+        if self.d > 1:
+            x = lineage_position[0]
+        else:
+            x = lineage_position
+        p = 0.5 * (float(x > - self.R) + float(x > self.R))
+        a = np.random.binomial(1, p)
         centre = uniform_draw_from_ball(lineage_position, self.radii[a])
         if self.signs[a] * centre[0] < 0:
             raise IgnoreEvent()

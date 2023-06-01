@@ -151,7 +151,7 @@ class GenomePartition(object):
             ax.plot(x, y, color = color, linewidth = 2)
         return ax
     
-    def plot_segments(self, ax = None, linewidth = 2, fontsize = 12):
+    def plot_segments(self, ax = None, linewidth = 2, fontsize = 12, jitter = 0.1):
         if ax is None:
             plt.figure()
             ax = plt.axes()
@@ -160,7 +160,7 @@ class GenomePartition(object):
         for i in self.lineages:
             ax.plot([0, self.G], [i, i], linewidth = linewidth * 0.8, color = 'black')
         for (individual, lineage, start, end) in self.segments.iterate():
-            y = lineage + np.random.normal(0, 0.1)
+            y = lineage + np.random.normal(0, jitter)
             y = [y, y]
             x = [start, end]
             color = colors[np.mod(individual, len(colors)).astype(int)]
