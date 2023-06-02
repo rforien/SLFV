@@ -215,6 +215,8 @@ class GenomePartition(object):
                        min_segment_length = None,
                        verbose = False):
         # tics = [time.time()]
+        if len(lineages_to_merge) == 0:
+            return
         remaining_index = ~np.isin(self.lineages, lineages_to_merge)
         new_lineages = self.get_new_lineages_indexes(remaining_index)
         pattern = self.draw_recombination_pattern(len(lineages_to_merge), new_lineages)
@@ -286,7 +288,8 @@ class GenomePartition(object):
         pairs = np.argwhere(lengths > min_segment_length)
         starts = Start[pairs[:,0], pairs[:,1]]
         ends = End[pairs[:,0], pairs[:,1]]
-        self.IBD_segments.add(pairs, starts, ends)
+        individuals = segments.individuals[pairs]
+        self.IBD_segments.add(individuals, starts, ends)
         if verbose:
             print("Found %d ibd segments so far." % len(self.IBD_segments))
     
