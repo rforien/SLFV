@@ -15,7 +15,34 @@ from . import events
 import time
 
 class SLFV(object):
+    '''
+    Class to simulate the SLFV, forwards in time.
+    
+    The state of the process is saved as a FrequencyXD object, where X is the
+    dimension of the space (1 or 2). This object stores the allele frequencies
+    at a set of discrete locations on a finite grid in the specified domain.
+    Reproduction events are drawn using an EventDist object, which is passed
+    to the constructor.
+    '''
     def __init__(self, shape, nb_alleles, event_dist, dx = 0.1):
+        '''
+        Constructor
+
+        Parameters
+        ----------
+        shape : tuple
+            shape of the (rectangle) domain on which to simulate the SLFV. Its
+            length determines the dimension of the domain.
+        nb_alleles : int
+            number of alleles in the model, should be at least 2.
+        event_dist : instance of a class inheriting from EventDist
+            Event drawer used to simulate the SLFV. See the documentation for
+            the events subpackage.
+        dx : float, optional
+            Size of the discretisation step used to build the frequency array. 
+            The default is 0.1.
+
+        '''
         assert dx > 0
         assert type(nb_alleles) == int and nb_alleles >= 2
         assert isinstance(event_dist, events.EventDist)
@@ -30,9 +57,33 @@ class SLFV(object):
         self.event_dist = event_dist
         
     def set_freq(self, freq_func, *args, **kwargs):
+        '''
+        Set the allele frequencies of the process.
+
+        Parameters
+        ----------
+        freq_func : callable
+            function taking spatial coordinates as an argument and returning
+            the allele frequencies at this location.
+        *args, **kwargs
+            Arguments passed to the function.
+
+        '''
         self.frequency.set_freq(freq_func, *args, **kwargs)
         
     def plot(self, ax = None, show = True):
+        '''
+        Display the current allele frequencies.
+
+        Parameters
+        ----------
+        ax : matplotlib axis, optional
+            Axis on which to draw the plot. If None a new figure will be created.
+            The default is None.
+        show : Bool, optional
+            Whether to call plt.show() at the end. The default is True.
+
+        '''
         if ax is None:
             self.fig = plt.figure()
             self.ax = plt.axes()
@@ -43,6 +94,23 @@ class SLFV(object):
             plt.tight_layout()
     
     def run(self, T, verbose = False, interactive = False):
+        '''
+        Run the SLFV simulation for a specified time.
+
+        Parameters
+        ----------
+        T : float
+            Time for which the simulation is run. Should be positive.
+        verbose : Bool, optional
+            If True, progress information will be displayed. 
+            The default is False.
+        interactive : Bool, optional
+            If True, the frequency will be displayed after each event, and the
+            simulation stops until the user clicks on the figure. 
+            The default is False.
+
+        '''
+        assert T > 0
         rate = self.event_dist.intensity(self.frequency.shape)
         number_of_events = rand.poisson(rate * T)
         # times = rand.rand(number_of_events) * T
@@ -64,7 +132,27 @@ class SLFV(object):
             print('')
     
     def run_animate(self, T, dt = 0.1, save = False, name = '', fill = True):
+        '''
+        Run a simulation of the SLFV with real-time display of the allele frequencies.
+
+        Parameters
+        ----------
+        T : float.
+            Time for which to run the simulation. Should be positive
+        dt : float, optional
+            Interval between updated of the figure. The default is 0.1.
+        save : Bool, optional
+            If True, the movie will be saved. The default is False.
+        name : string, optional
+            Name of the file used to save the movie. If empty, nothing will be
+            saved. The default is ''.
+        fill : Bool, optional
+            If True and if dim = 1, the plot will show cumulative frequencies
+            with different colors. The default is True.
+
+        '''
         assert dt > 0
+        assert T > 0
         self.plot(show = False)
         anim = animation.FuncAnimation(self.fig, self._update, interval = 80, blit=False, fargs=(dt, fill))
         if (save and name != ''):

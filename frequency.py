@@ -52,7 +52,7 @@ class Frequency1D(object):
             for (i, z) in enumerate(self.space):
                 self.freq[i] = freq_func(z, *args, **kwargs)
         
-    def plot(self, ax = None, fill = True):
+    def plot(self, ax = None, fill = True, show = True):
         if ax is None:
             plt.figure()
             ax = plt.axes()
@@ -73,6 +73,8 @@ class Frequency1D(object):
         else:
             ax.set_ylabel("Cumulative allele frequencies")
         ax.set_xlabel("Space")
+        if show:
+            plt.show()
         return lines
     
     def update_plot(self, ax, lines, fill = True):

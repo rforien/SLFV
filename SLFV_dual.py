@@ -15,7 +15,23 @@ from . import events
 from . import ARG
 
 class Labelled_Coalescent(object):
+    '''
+    Class to record the coalescent tree of a sample of individuals, in which
+    lineages carry some labels. This is for a haploid model without recombination,
+    so each individual has a single parent in the previous step.
+    '''
     def __init__(self, labels):
+        '''
+        Constructor
+
+        Parameters
+        ----------
+        labels : numpy.ndarray
+            Array giving the labels of the sampled individuals. The length along
+            the first axis of this array determines the number of individuals in 
+            the sample.
+
+        '''
         assert type(labels) == np.ndarray, "Unexpected type of labels."
         n = np.size(labels, axis = 0)
         self.coalescent = np.reshape(np.arange(n), (1,n))
@@ -23,6 +39,22 @@ class Labelled_Coalescent(object):
         self.times = [0]
     
     def single_merger(self, time, indices_to_merge, new_label):
+        '''
+        Add a new merger in the coalescent. The merger must include at least one
+        individual. If only one individual is involved, then this can be used to
+        update the label of an individual.
+
+        Parameters
+        ----------
+        time : float
+            Time at which the merger takes place.
+        indices_to_merge : list
+            List of indices of the lineages involved in the merge. After the
+            merge, all the corresponding lineages have the same ancestor.
+        new_label : same type as the labels
+            Label of the lineage replacing those involved in the merge.
+
+        '''
         merge = [i in indices_to_merge for i in self.coalescent[-1,]]
         if any(merge):
             self.coalescent = np.vstack((self.coalescent, self.coalescent[-1,]))
@@ -32,33 +64,108 @@ class Labelled_Coalescent(object):
         self.times.append(time)
     
     def kill(self, index):
+        '''
+        Kill a lineage.
+
+        Parameters
+        ----------
+        index : int
+            Index of the lineage to kill.
+
+        '''
+        print("Warning, killing not maintained!")
         self.single_merger([index], np.reshape(np.nan*np.ones(np.size(self.labels[-1,0])), (1, np.size(self.labels[-1,0]))))
     
     def alive_lineages(self):
+        '''
+        Return the list of alive lineages.
+        '''
         return [x for x in self.coalescent[-1,:] if self.current_labels()[x,0] < np.inf]
     
     def nb_alive_lineages(self):
+        '''
+        Return the number of alive lineages.
+        '''
         return np.size(self.alive_lineages())
     
     def current_labels(self):
+        '''
+        Return the current labels of the ancestors of the sampled individuals.
+        '''
         return self.labels[-1,]
     
     def current_coalescent(self):
+        '''
+        Return the indices of the ancestors of the sampled individuals.
+        '''
         return self.coalescent[-1,]
     
     def nb_current_lineages(self):
+        '''
+        Return the current list of lineages (whether alive or not).
+        '''
         return np.size(np.unique(self.coalescent[-1,]))
     
 def dist(positions, centre):
+    '''
+    Compute the distances of a set of positions to some reference point.
+
+    Parameters
+    ----------
+    positions : numpy.ndarray
+        Array giving the positions. Should be of shape (n, d), where d is the
+        dimension of the space.
+    centre : numpy.ndarray
+        Coordinates of the reference point. Should be of shape (d,).
+
+    Returns
+    -------
+    distances : numpy.ndarray
+        Array of shape (n,) giving the (euclidian) distances of the positions
+        to the reference point.
+
+    '''
     return np.sqrt(np.sum((positions - centre[np.newaxis,:])**2, axis = 1))
 
 class SLFV_dual(object):
+    '''
+    Class to simulate the dual of the SLFV with a single parent at each
+    reproduction event.
+    
+    The history of the process is recorded in a Labelled_Coalescent object,
+    where the labels are the positions of the lineages.
+    '''
     def __init__(self, event_dist, dim):
+        '''
+        Constructor
+
+        Parameters
+        ----------
+        event_dist : instance of a class which inherits from DualEventDist
+            Object used to draw the reproduction events.
+        dim : int
+            Dimension of geographical space in which the simulation takes place.
+
+        '''
         assert type(dim) == int and dim >= 1
         self.d = dim
         self.event_dist = event_dist
     
     def run_coalescent(self, lineages_init_positions, T, verbose = False):
+        '''
+        Run the simulation for a specified amount of time.
+
+        Parameters
+        ----------
+        lineages_init_positions : numpy.ndarray
+            Coordinates of the initial positions of the lineages, of shape (n, d),
+            where n is the number of lineages and d is the dimension of the space.
+        T : float
+            Time for which to run the simulation.
+        verbose : Bool, optional
+            If True, progress information will be printed. The default is False.
+
+        '''
         assert np.size(lineages_init_positions, axis = 1) == self.d
         self.n = np.size(lineages_init_positions, axis = 0)
         self.init_coalescent(lineages_init_positions)
@@ -134,17 +241,55 @@ class SLFV_dual(object):
         self.times = np.array(self.times)
     
     def init_coalescent(self, lineages_init_positions):
+        '''
+        Initialise the coalescent object (can be overloaded in classes inheriting
+        from this class to record the history in another form).
+        '''
         self.coalescent = Labelled_Coalescent(lineages_init_positions)
     
     def get_current_positions(self):
+        '''
+        Return the current positions of the lineages.
+        '''
         return self.coalescent.current_labels()
     
     def merge(self, merge_time, indices_to_merge, event_params, verbose = False):
+        '''
+        Merge a given set of lineages.
+
+        Parameters
+        ----------
+        merge_time : float
+            Time at which the merge takes place.
+        indices_to_merge : list
+            Indices of the lineages involved in the merge event.
+        event_params : dict
+            Parameters of the reproduction event. By default only the 
+            'parent position' value is used.
+        verbose : Bool, optional
+            Not used by default, introduced for compatibility. 
+            The default is False.
+
+        '''
         self.coalescent.single_merger(merge_time,
                                       indices_to_merge, 
                                       event_params['parent position'])
 
     def ancestral_path(self, i):
+        '''
+        Return the trajectory of the lineage of a specified individual.
+
+        Parameters
+        ----------
+        i : int
+            index of the individual in the original sample.
+
+        Returns
+        -------
+        X (, Y) : numpy.ndarray (, numpy.ndarray)
+            Time series of the coordinates of the lineages along the trajectory.
+
+        '''
         if self.d == 2:
             X = self.coalescent.labels[:,i,0]
             Y = self.coalescent.labels[:,i,1]
@@ -153,6 +298,15 @@ class SLFV_dual(object):
             return self.coalescent.labels[:,i,0]
         
     def display_trajectory(self):
+        '''
+        Plot the trajectory of the lineages.
+        
+        In two dimensions, the trace of each lineage is plotted in a different
+        colour, with no time axis.
+        In one dimension, the trajectories are plotted with time in the y axis
+        and space in the x axis.
+
+        '''
         plt.figure()
         ax = plt.axes()
         if self.d == 2:
@@ -167,13 +321,34 @@ class SLFV_dual(object):
             print("Not implemented.")
 
 class SLFV_ARG(SLFV_dual):
+    '''
+    Class to simulate the dual of the SLFV along a full genome using the ARG.
+    '''
     def __init__(self, event_dist, dim, genome_length, record_locii = None):
+        '''
+        Constructor
+
+        Parameters
+        ----------
+        event_dist : instance of a class inheriting from DualEventDist
+            Event drawer used to draw the reproduction events.
+        dim : int
+            Dimension of the geographical space.
+        genome_length : float
+            Length, in Morgan, of the genome (only one chromosome is simulated).
+        record_locii : list, optional
+            If given, the process records the full history of the coalescent at
+            the given list of locii. Otherwise only the current state is recorded. 
+            The default is None.
+
+        '''
         super().__init__(event_dist, dim)
         assert genome_length > 0
         self.G = genome_length
         if record_locii is not None:
             self.record = True
             self.locii = np.array(record_locii)
+            assert np.min(self.locii) >= 0 and np.max(self.locii) < self.G
         else:
             self.record = False
     
@@ -183,6 +358,33 @@ class SLFV_ARG(SLFV_dual):
                        verbose = False,
                        dump_interval = None,
                        dump_filename = None):
+        '''
+        Run the coalescent for a specified amount of time.
+
+        Parameters
+        ----------
+        lineages_init_positions : numpy.ndarray
+            Coordinates of the initial positions of the lineages. Of shape (n, d),
+            where n is the number of lineages, and d is the dimension of space.
+        T : float
+            Time for which to run the simulation.
+        record_IBD_segments : Bool, optional
+            If True, the IBD segments longer than min_segment_length will be 
+            recorded. The default is False.
+        min_segment_length : float, optional
+            Minimum length (in Morgan) of the IBD segements to record.
+            The default is None.
+        verbose : Bool, optional
+            If True, progress information will be displayed. The default is False.
+        dump_interval : float, optional
+            If passed, the current IBD segments will be saved every n seconds,
+            under the named passed as dump_filename, where n is the value of
+            dump_interval.
+            The default is None.
+        dump_filename : string, optional
+            Name of the file to save the dumped IBD segments. The default is None.
+
+        '''
         if record_IBD_segments:
             assert min_segment_length > 0
         if dump_interval is None:
@@ -200,6 +402,9 @@ class SLFV_ARG(SLFV_dual):
             self.IBD_segments = self.ARG.IBD_segments.to_DataFrame()
         
     def init_coalescent(self, lineages_init_positions):
+        '''
+        Initialise the coalescent object.
+        '''
         if self.record:
             self.ARG = ARG.AncestralRecombinationGraph(self.G, self.n, self.locii,
                                                       labels = lineages_init_positions)
@@ -207,9 +412,29 @@ class SLFV_ARG(SLFV_dual):
             self.ARG = ARG.GenomePartition(self.G, self.n, labels = lineages_init_positions)
     
     def get_current_positions(self):
+        '''
+        Return the current lineage positions
+        '''
         return self.ARG.labels
     
     def merge(self, merge_time, indices_to_merge, event_params, verbose = False):
+        '''
+        Merge a given set of lineages.
+
+        Parameters
+        ----------
+        merge_time : float
+            Time at which the merge takes place.
+        indices_to_merge : list
+            Indices of the lineages involved in the merge event.
+        event_params : dict
+            Parameters of the reproduction event. The two values used are
+            '1st parent position' and '2nd parent position'.
+        verbose : Bool, optional
+            Not used by default, introduced for compatibility. 
+            The default is False.
+
+        '''
         parent_positions = np.vstack((event_params['1st parent position'],
                                       event_params['2nd parent position']))
         lineages_to_merge = self.ARG.lineages[indices_to_merge]
@@ -227,6 +452,9 @@ class SLFV_ARG(SLFV_dual):
                 self.dump_tic = dump_tic
     
     def get_IBD_segments(self):
+        '''
+        Return the current IBD segments
+        '''
         return self.ARG.IBD_segments.to_DataFrame()
             
 if __name__ == "__main__":

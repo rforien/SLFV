@@ -12,7 +12,28 @@ import pandas as pd
 import time
 
 class SegmentList(object):
+    '''
+    Class recording a list of genome segements, where each segment corresponds
+    to a continous genome portion that an individual inherited from the same
+    ancestor (or lineage) at some fixed time.
+    '''
     def __init__(self, starts, ends, individuals, lineages):
+        '''
+        Constructor.
+        All the arrays should be one-dimensional and have the same size.
+
+        Parameters
+        ----------
+        starts : numpy.ndarray
+            Starting points, along the genome (in Morgan) of the segments.
+        ends : numpy.ndarray
+            End points of the segments (idem).
+        individuals : numpy.ndarray
+            Individuals in the sample who inherited these segments.
+        lineages : numpy.ndarray
+            Ancestors carrying the segments.
+
+        '''
         self.starts = starts
         self.ends = ends
         self.individuals = individuals
@@ -22,12 +43,34 @@ class SegmentList(object):
         return np.size(self.starts)
     
     def from_DataFrame(self, df):
+        '''
+        Convert a DataFrame of segments to a SegmentList object.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            DataFrame containing the start points, end points, individuals and
+            lineages of the segments as columns, named 'start', 'end', 'individual'
+            and 'lineage'.
+
+        '''
         self.starts = df['start']
         self.ends = df['end']
         self.individuals = df['individual']
         self.lineages = df['lineage']
     
     def to_DataFrame(self):
+        '''
+        Return a DataFrame of segments.
+
+        Returns
+        -------
+        df : pandas.DataFrame
+            DataFrame containing the start points, end points, individuals and
+            lineages of the segments as columns, named 'start', 'end', 'individual'
+            and 'lineage'.
+
+        '''
         df = pd.DataFrame(data = {'individual': self.individuals,
                                         'lineage': self.lineages,
                                         'start': self.starts,
@@ -35,19 +78,55 @@ class SegmentList(object):
         return df
     
     def iterate(self):
+        '''
+        Can be used to iterate over the segments.
+        '''
         return zip(self.individuals, self.lineages, self.starts, self.ends)
     
     def fold_back(self, G):
+        '''
+        Remove offsets in the start and end points of the segments. The offsets
+        must all be multiples of G (in practice G is the full genome length).
+
+        Parameters
+        ----------
+        G : float
+            Genome length, or base offset to remove.
+
+        '''
         self.starts = np.mod(self.starts, G)
         self.ends = G - np.mod(-self.ends, G)
     
     def join(self, index, new_segments):
+        '''
+        Concatenate two SegmentList objects, keeping only the elements in some
+        boolean index of the present object.
+
+        Parameters
+        ----------
+        index : numpy.ndarray
+            Boolean array of the same length as the present list. Only elements
+            for which index[i] = True will be kept.
+        new_segments : SegmentList
+            List to concatenate.
+
+        '''
         self.starts = np.hstack((self.starts[index], new_segments.starts))
         self.ends = np.hstack((self.ends[index], new_segments.ends))
         self.individuals = np.hstack((self.individuals[index], new_segments.individuals))
         self.lineages = np.hstack((self.lineages[index], new_segments.lineages))
     
     def drop(self, index):
+        '''
+        Drop segments according to a boolean index.
+
+        Parameters
+        ----------
+        index : numpy.ndarray
+            Boolean array of the same length as the present list. Only elements
+            for which index[i] = False will be kept.
+
+        '''
         self.starts = self.starts[~index]
         self.ends = self.ends[~index]
         self.individuals = self.individuals[~index]
@@ -151,16 +230,17 @@ class GenomePartition(object):
             ax.plot(x, y, color = color, linewidth = 2)
         return ax
     
-    def plot_segments(self, ax = None, linewidth = 2, fontsize = 12, jitter = 0.1):
+    def plot_segments(self, ax = None, linewidth = 2, fontsize = 12, width = 0.1):
         if ax is None:
             plt.figure()
             ax = plt.axes()
         prop_cycle = plt.rcParams['axes.prop_cycle']
         colors = prop_cycle.by_key()['color']
+        offsets = width * np.linspace(-1, 1, self.n)
         for i in self.lineages:
             ax.plot([0, self.G], [i, i], linewidth = linewidth * 0.8, color = 'black')
         for (individual, lineage, start, end) in self.segments.iterate():
-            y = lineage + np.random.normal(0, jitter)
+            y = lineage + offsets[individual]
             y = [y, y]
             x = [start, end]
             color = colors[np.mod(individual, len(colors)).astype(int)]
