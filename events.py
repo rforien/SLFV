@@ -313,6 +313,8 @@ class DualHeterogeneous(DualEventDist):
         assert np.min(params['radii']) > 0
         self.impacts = np.array(params['impacts'])
         self.radii = np.array(params['radii'])
+        self.weights = np.array(params['weights'])
+        self.max_weight = np.max(self.weights)
         self.R = np.max(self.radii)
         self.signs = np.array([-1, 1])
     
@@ -325,6 +327,18 @@ class DualHeterogeneous(DualEventDist):
         # they can be affected by both types of events.
         rates = np.ones(np.size(first_coords)) + (np.abs(first_coords) < self.R).astype(float)
         return rates
+    
+    def biased_draw_from_ball(self, centre, radius):
+        if np.abs(centre[0]) > radius:
+            y = uniform_draw_from_ball(centre, radius)
+        else:
+            while True:
+                y = uniform_draw_from_ball(centre, radius)
+                u = np.random.uniform(0, self.max_weight)
+                w = np.sum(self.weights * (self.signs * y[0] > 0))
+                if u < w:
+                    break
+        return y
     
     def draw_event_params(self, lineage_position):
         # first pick a side for the centre of the reproduction event.
@@ -342,7 +356,7 @@ class DualHeterogeneous(DualEventDist):
         # if the event is on the wrong side, we ignore it.
         if self.signs[a] * centre[0] < 0:
             raise IgnoreEvent()
-        parent_position = uniform_draw_from_ball(centre, self.radii[a])
+        parent_position = self.biased_draw_from_ball(centre, self.radii[a])
         params = {'centre': centre,
                   'radius': self.radii[a],
                   'impact': self.impacts[a],
@@ -363,8 +377,8 @@ class TwoParentHeterogeneous(DualHeterogeneous, TwoParentFixedRadius):
     def draw_event_params(self, lineage_position):
         params = DualHeterogeneous.draw_event_params(self, lineage_position)
         params['1st parent position'] = params['parent position']
-        second_parent = uniform_draw_from_ball(params['centre'],
-                                               params['radius'])
+        second_parent = self.biased_draw_from_ball(params['centre'],
+                                                   params['radius'])
         params['2nd parent position'] = second_parent
         return params
         
